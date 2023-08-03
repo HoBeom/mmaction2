@@ -1140,6 +1140,9 @@ class DecordInit(BaseTransform):
         if self.file_client is None:
             self.file_client = FileClient(self.io_backend, **self.kwargs)
         file_obj = io.BytesIO(self.file_client.get(filename))
+        if self.io_backend == 'lmdb':
+            file_obj = io.BytesIO(self.file_client.get(osp.basename(filename)))
+        # print(filename, osp.basename(filename))
         container = decord.VideoReader(file_obj, num_threads=self.num_threads)
         return container
 
@@ -1154,6 +1157,8 @@ class DecordInit(BaseTransform):
         """
         container = self._get_video_reader(results['filename'])
         results['total_frames'] = len(container)
+        if results['modality'] == 'Flow':
+            results['total_frames'] = results['total_frames'] // 2
 
         results['video_reader'] = container
         results['avg_fps'] = container.get_avg_fps()
@@ -1211,6 +1216,21 @@ class DecordDecode(BaseTransform):
                 imgs.append(frame.asnumpy())
         return imgs
 
+    def _decord_load_flow_frames(self, container: object,
+                                 frame_inds: np.ndarray) -> List[np.ndarray]:
+        if self.mode == 'accurate':
+            imgs = container.get_batch(frame_inds).asnumpy()[..., 0]
+            imgs = list(imgs)
+        elif self.mode == 'efficient':
+            # This mode is faster, however it always returns I-FRAME
+            container.seek(0)
+            imgs = list()
+            for idx in frame_inds:
+                container.seek(idx)
+                frame = container.next()
+                imgs.append(frame.asnumpy()[..., 0])
+        return imgs
+
     def transform(self, results: Dict) -> Dict:
         """Perform the Decord decoding.
 
@@ -1226,7 +1246,14 @@ class DecordDecode(BaseTransform):
             results['frame_inds'] = np.squeeze(results['frame_inds'])
 
         frame_inds = results['frame_inds']
-        imgs = self._decord_load_frames(container, frame_inds)
+        if results['modality'] == 'Flow':
+            frame_inds = np.concatenate(
+                [frame_inds, frame_inds + results['total_frames']], axis=0)
+            imgs = self._decord_load_flow_frames(container, frame_inds)
+            mid = len(imgs) // 2
+            imgs = [imgs[i // 2 + i % 2 * mid] for i in range(len(imgs))]
+        else:
+            imgs = self._decord_load_frames(container, frame_inds)
 
         results['video_reader'] = None
         del container
@@ -1252,6 +1279,67 @@ class DecordDecode(BaseTransform):
     def __repr__(self) -> str:
         repr_str = f'{self.__class__.__name__}(mode={self.mode})'
         return repr_str
+
+
+@TRANSFORMS.register_module()
+class VideoLmdbInit(DecordInit):
+
+    def __init__(self,
+                 io_backend: str = 'lmdb',
+                 num_threads: int = 1,
+                 db_path: str = None,
+                 readonly: bool = True,
+                 lock: bool = False,
+                 readahead: bool = False,
+                 **kwargs) -> None:
+        self.io_backend = io_backend
+        self.num_threads = num_threads
+        self.db_path = db_path
+        self.readonly = readonly
+        self.lock = lock
+        self.readahead = readahead
+        self.kwargs = kwargs
+        self._client = None
+        self._txn = None
+        if io_backend != 'lmdb':
+            raise ValueError('VideoLmdbInit only support lmdb backend')
+
+    def _get_video_reader(self, filename: str) -> object:
+        if osp.splitext(filename)[0] == filename:
+            filename = filename + '.mp4'
+        if self._client is None:
+            self._client = self._get_client()
+        if self._txn is None:
+            self._txn = self._client.begin(write=False)
+
+        try:
+            import decord
+        except ImportError:
+            raise ImportError(
+                'Please run "pip install decord" to install Decord first.')
+
+        # file_obj = io.BytesIO(self.file_client.get(osp.basename(filename)))
+        file_obj = io.BytesIO(self._txn.get(osp.basename(filename).encode()))
+        container = decord.VideoReader(file_obj, num_threads=self.num_threads)
+        return container
+
+    def _get_client(self):
+        try:
+            import lmdb  # noqa: F401
+        except ImportError:
+            raise ImportError(
+                'Please run "pip install lmdb" to enable LmdbBackend.')
+
+        return lmdb.open(
+            self.db_path,
+            readonly=self.readonly,
+            lock=self.lock,
+            readahead=self.readahead,
+            **self.kwargs)
+
+    def __del__(self):
+        if self._client is not None:
+            self._client.close()
 
 
 @TRANSFORMS.register_module()

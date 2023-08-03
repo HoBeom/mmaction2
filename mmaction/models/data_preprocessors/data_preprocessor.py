@@ -47,7 +47,7 @@ class ActionDataPreprocessor(BaseDataPreprocessor):
             self._enable_normalize = True
             if self.format_shape == 'NCHW':
                 normalizer_shape = (-1, 1, 1)
-            elif self.format_shape in ['NCTHW', 'MIX2d3d']:
+            elif self.format_shape in ['NCTHW', 'MIX2d3d', 'NCTHW_Flow']:
                 normalizer_shape = (-1, 1, 1, 1)
             else:
                 raise ValueError(f'Invalid format shape: {format_shape}')
