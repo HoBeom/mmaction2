@@ -321,12 +321,20 @@ class FormatShape(BaseTransform):
             num_imgs = len(results['imgs'])
             assert num_imgs % 2 == 0
             n = num_imgs // 2
-            h, w = results['imgs'][0].shape
-            x_flow = np.empty((n, h, w), dtype=np.float32)
-            y_flow = np.empty((n, h, w), dtype=np.float32)
-            for i in range(n):
-                x_flow[i] = results['imgs'][2 * i]
-                y_flow[i] = results['imgs'][2 * i + 1]
+            if results['imgs'][0].ndim == 2:  # load from rawframes
+                h, w = results['imgs'][0].shape
+                x_flow = np.empty((n, h, w), dtype=np.float32)
+                y_flow = np.empty((n, h, w), dtype=np.float32)
+                for i in range(n):
+                    x_flow[i] = results['imgs'][2 * i]
+                    y_flow[i] = results['imgs'][2 * i + 1]
+            elif results['imgs'][0].ndim == 3:  # load from decord
+                h, w = results['imgs'][0].shape[:2]
+                x_flow = np.empty((n, h, w), dtype=np.float32)
+                y_flow = np.empty((n, h, w), dtype=np.float32)
+                for i in range(n):
+                    x_flow[i] = results['imgs'][i][..., 0]
+                    y_flow[i] = results['imgs'][i + n][..., 0]
             imgs = np.stack([x_flow, y_flow], axis=-1)
 
             num_clips = results['num_clips']

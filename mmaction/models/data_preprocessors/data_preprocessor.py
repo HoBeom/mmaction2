@@ -45,7 +45,7 @@ class ActionDataPreprocessor(BaseDataPreprocessor):
                                     '`mean` and `std`.'
             # Enable the normalization in preprocessing.
             self._enable_normalize = True
-            if self.format_shape == 'NCHW':
+            if self.format_shape in ['NCHW', 'NCHW_Flow']:
                 normalizer_shape = (-1, 1, 1)
             elif self.format_shape in ['NCTHW', 'MIX2d3d', 'NCTHW_Flow']:
                 normalizer_shape = (-1, 1, 1, 1)
