@@ -5,7 +5,6 @@ _base_ = [
 
 model = dict(
     backbone=dict(in_channels=17),
-    cls_head=dict(num_classes=27),
     data_preprocessor=dict(mean=None, std=None),
 )
 
