@@ -230,7 +230,7 @@ class FormatShape(BaseTransform):
         self.input_format = input_format
         self.collapse = collapse
         if self.input_format not in [
-                'NCTHW', 'NCHW', 'NCTHW_Heatmap', 'NPTCHW'
+                'NCTHW', 'NCHW', 'NCTHW_Heatmap', 'NPTCHW', 'NCHW_Heatmap'
         ]:
             raise ValueError(
                 f'The input format {self.input_format} is invalid.')
@@ -296,6 +296,19 @@ class FormatShape(BaseTransform):
             # N_crops x N_clips x C x T x H x W
             imgs = imgs.reshape((-1, ) + imgs.shape[2:])
             # M' x C x T x H x W
+            # M' = N_crops x N_clips
+            results['imgs'] = imgs
+            results['input_shape'] = imgs.shape
+
+        elif self.input_format == 'NCHW_Heatmap':
+            num_clips = results['num_clips']
+            clip_len = results['clip_len']
+            imgs = results['imgs']
+
+            imgs = imgs.reshape((-1, num_clips, clip_len * imgs.shape[1]) +
+                                imgs.shape[2:])
+            imgs = imgs.reshape((-1, ) + imgs.shape[2:])
+            # M' x C  x H x W
             # M' = N_crops x N_clips
             results['imgs'] = imgs
             results['input_shape'] = imgs.shape
